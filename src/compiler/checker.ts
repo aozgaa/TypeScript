@@ -2385,7 +2385,8 @@ namespace ts {
                 function createMappedTypeNodeFromType(type: MappedType) {
                     Debug.assert(!!(type.flags & TypeFlags.Object));
                     const typeParameter = getTypeParameterFromMappedType(type);
-                    const typeParameterNode = typeParameterToDeclaration(typeParameter);
+                    const constraint = getConstraintTypeFromMappedType(type);
+                    const typeParameterNode = typeParameterToDeclaration(typeParameter, constraint);
 
                     const templateType = getTemplateTypeFromMappedType(type);
                     const templateTypeNode = typeToTypeNodeHelper(templateType);
@@ -2636,8 +2637,8 @@ namespace ts {
                 return createSignatureDeclaration(kind, typeParameters, parameters, returnTypeNodeExceptAny);
             }
 
-            function typeParameterToDeclaration(type: TypeParameter): TypeParameterDeclaration {
-                const constraint = getConstraintFromTypeParameter(type);
+            function typeParameterToDeclaration(type: TypeParameter, constraint?: Type): TypeParameterDeclaration {
+                constraint = constraint || getConstraintFromTypeParameter(type);
                 const constraintNode = constraint && typeToTypeNodeHelper(constraint);
                 const defaultParameter = getDefaultFromTypeParameter(type);
                 const defaultParameterNode = defaultParameter && typeToTypeNodeHelper(defaultParameter);
