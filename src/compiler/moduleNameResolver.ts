@@ -290,7 +290,9 @@ namespace ts {
      * Cached module resolutions per containing directory.
      * This assumes that any module id will have the same resolution for sibling files located in the same folder.
      */
-    export interface ModuleResolutionCache extends NonRelativeModuleNameResolutionCache {
+    export type ModuleResolutionCache = RelativeModuleResolutionCache & NonRelativeModuleNameResolutionCache;
+
+    export interface RelativeModuleResolutionCache {
         getOrCreateCacheForDirectory(directoryName: string): Map<ResolvedModuleWithFailedLookupLocations>;
     }
 
@@ -407,7 +409,12 @@ namespace ts {
         }
     }
 
-    export function resolveModuleName(moduleName: string, containingFile: string, compilerOptions: CompilerOptions, host: ModuleResolutionHost, cache?: ModuleResolutionCache): ResolvedModuleWithFailedLookupLocations {
+    export function resolveModuleName(
+        moduleName: string,
+        containingFile: string,
+        compilerOptions: CompilerOptions,
+        host: ModuleResolutionHost,
+        cache?: ModuleResolutionCache): ResolvedModuleWithFailedLookupLocations {
         const traceEnabled = isTraceEnabled(compilerOptions, host);
         if (traceEnabled) {
             trace(host, Diagnostics.Resolving_module_0_from_1, moduleName, containingFile);

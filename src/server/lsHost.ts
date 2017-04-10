@@ -5,7 +5,10 @@
 namespace ts.server {
     export class LSHost implements ts.LanguageServiceHost, ModuleResolutionHost {
         private compilationSettings: ts.CompilerOptions;
-        private readonly resolvedModuleNames = createFileMap<Map<ResolvedModuleWithFailedLookupLocations>>();
+        /** Used for caching old resolutions and detecting changes in the set of modules referenced by a sourcefile. */
+        private readonly sourceFileToResolvedModuleNames = createFileMap<Map<ResolvedModuleWithFailedLookupLocations>>();
+        /** Used for caching and sharing module resolution info between distinct (non)relative import statements. */
+        private moduleResolutionCache: ts.ModuleResolutionCache;
         private readonly resolvedTypeReferenceDirectives = createFileMap<Map<ResolvedTypeReferenceDirectiveWithFailedLookupLocations>>();
         private readonly getCanonicalFileName: (fileName: string) => string;
 
@@ -18,16 +21,17 @@ namespace ts.server {
         constructor(private readonly host: ServerHost, private readonly project: Project, private readonly cancellationToken: HostCancellationToken) {
             this.cancellationToken = new ThrottledCancellationToken(cancellationToken, project.projectService.throttleWaitMilliseconds);
             this.getCanonicalFileName = ts.createGetCanonicalFileName(this.host.useCaseSensitiveFileNames);
+            this.moduleResolutionCache = createModuleResolutionCache(this.host.getCurrentDirectory(), this.getCanonicalFileName);
 
             if (host.trace) {
                 this.trace = s => host.trace(s);
             }
 
-            this.resolveModuleName = (moduleName, containingFile, compilerOptions, host) => {
+            this.resolveModuleName = (moduleName, containingFile, compilerOptions, host, cache) => {
                 const globalCache = this.project.getTypeAcquisition().enable
                     ? this.project.projectService.typingsInstaller.globalTypingsCacheLocation
                     : undefined;
-                const primaryResult = resolveModuleName(moduleName, containingFile, compilerOptions, host);
+                const primaryResult = resolveModuleName(moduleName, containingFile, compilerOptions, host, cache);
                 // return result immediately only if it is .ts, .tsx or .d.ts
                 if (moduleHasNonRelativeName(moduleName) && !(primaryResult.resolvedModule && extensionIsTypeScript(primaryResult.resolvedModule.extension)) && globalCache !== undefined) {
                     // otherwise try to load typings from @types
@@ -60,14 +64,15 @@ namespace ts.server {
         private resolveNamesWithLocalCache<T extends { failedLookupLocations: string[] }, R>(
             names: string[],
             containingFile: string,
-            cache: ts.FileMap<Map<T>>,
-            loader: (name: string, containingFile: string, options: CompilerOptions, host: ModuleResolutionHost) => T,
+            sourceFileCache: ts.FileMap<Map<T>>,
+            loader: (name: string, containingFile: string, options: CompilerOptions, host: ModuleResolutionHost, moduleResolutionCache?: ModuleResolutionCache) => T,
             getResult: (s: T) => R,
             getResultFileName: (result: R) => string | undefined,
-            logChanges: boolean): R[] {
+            logChanges: boolean,
+            moduleResolutionCache?: ts.ModuleResolutionCache): R[] {
 
             const path = toPath(containingFile, this.host.getCurrentDirectory(), this.getCanonicalFileName);
-            const currentResolutionsInFile = cache.get(path);
+            const currentResolutionsInFile = sourceFileCache.get(path);
 
             const newResolutions: Map<T> = createMap<T>();
             const resolvedModules: R[] = [];
@@ -84,7 +89,7 @@ namespace ts.server {
                         resolution = existingResolution;
                     }
                     else {
-                        resolution = loader(name, containingFile, compilerOptions, this);
+                        resolution = loader(name, containingFile, compilerOptions, this, moduleResolutionCache);
                         newResolutions.set(name, resolution);
                     }
                     if (logChanges && this.filesWithChangedSetOfUnresolvedImports && !resolutionIsEqualTo(existingResolution, resolution)) {
@@ -100,7 +105,7 @@ namespace ts.server {
             }
 
             // replace old results with a new one
-            cache.set(path, newResolutions);
+            sourceFileCache.set(path, newResolutions);
             return resolvedModules;
 
             function resolutionIsEqualTo(oldResolution: T, newResolution: T): boolean {
@@ -158,13 +163,24 @@ namespace ts.server {
         }
 
         resolveTypeReferenceDirectives(typeDirectiveNames: string[], containingFile: string): ResolvedTypeReferenceDirective[] {
-            return this.resolveNamesWithLocalCache(typeDirectiveNames, containingFile, this.resolvedTypeReferenceDirectives, resolveTypeReferenceDirective,
-                m => m.resolvedTypeReferenceDirective, r => r.resolvedFileName,  /*logChanges*/ false);
+            return this.resolveNamesWithLocalCache(typeDirectiveNames,
+                containingFile,
+                this.resolvedTypeReferenceDirectives,
+                resolveTypeReferenceDirective,
+                m => m.resolvedTypeReferenceDirective,
+                r => r.resolvedFileName,
+                /*logChanges*/ false);
         }
 
         resolveModuleNames(moduleNames: string[], containingFile: string): ResolvedModuleFull[] {
-            return this.resolveNamesWithLocalCache(moduleNames, containingFile, this.resolvedModuleNames, this.resolveModuleName,
-                m => m.resolvedModule, r => r.resolvedFileName, /*logChanges*/ true);
+            return this.resolveNamesWithLocalCache(
+                moduleNames,
+                containingFile,
+                this.sourceFileToResolvedModuleNames,
+                this.resolveModuleName,
+                m => m.resolvedModule,
+                r => r.resolvedFileName,
+                /*logChanges*/ true);
         }
 
         getDefaultLibFileName() {
@@ -226,14 +242,16 @@ namespace ts.server {
         }
 
         notifyFileRemoved(info: ScriptInfo) {
-            this.resolvedModuleNames.remove(info.path);
+            this.sourceFileToResolvedModuleNames.remove(info.path);
             this.resolvedTypeReferenceDirectives.remove(info.path);
+            // TODO: make this work for ModuleResolutionCache
         }
 
         setCompilationSettings(opt: ts.CompilerOptions) {
             if (changesAffectModuleResolution(this.compilationSettings, opt)) {
-                this.resolvedModuleNames.clear();
+                this.sourceFileToResolvedModuleNames.clear();
                 this.resolvedTypeReferenceDirectives.clear();
+                // TODO: make this work for ModuleResolutionCache.
             }
             this.compilationSettings = opt;
         }
