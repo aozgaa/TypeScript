@@ -17,11 +17,13 @@ namespace ts.server {
         private readonly resolveModuleName: typeof resolveModuleName;
         readonly trace: (s: string) => void;
         readonly realpath?: (path: string) => string;
+        private currentDirectory: string;
 
         constructor(private readonly host: ServerHost, private readonly project: Project, private readonly cancellationToken: HostCancellationToken) {
             this.cancellationToken = new ThrottledCancellationToken(cancellationToken, project.projectService.throttleWaitMilliseconds);
             this.getCanonicalFileName = ts.createGetCanonicalFileName(this.host.useCaseSensitiveFileNames);
-            this.moduleResolutionCache = createModuleResolutionCache(this.host.getCurrentDirectory(), this.getCanonicalFileName);
+            this.currentDirectory = this.host.getCurrentDirectory();
+            this.moduleResolutionCache = createModuleResolutionCache(this.currentDirectory, this.getCanonicalFileName);
 
             if (host.trace) {
                 this.trace = s => host.trace(s);
@@ -163,7 +165,8 @@ namespace ts.server {
         }
 
         resolveTypeReferenceDirectives(typeDirectiveNames: string[], containingFile: string): ResolvedTypeReferenceDirective[] {
-            return this.resolveNamesWithLocalCache(typeDirectiveNames,
+            return this.resolveNamesWithLocalCache(
+                typeDirectiveNames,
                 containingFile,
                 this.resolvedTypeReferenceDirectives,
                 resolveTypeReferenceDirective,
@@ -180,7 +183,8 @@ namespace ts.server {
                 this.resolveModuleName,
                 m => m.resolvedModule,
                 r => r.resolvedFileName,
-                /*logChanges*/ true);
+                /*logChanges*/ true,
+                this.moduleResolutionCache);
         }
 
         getDefaultLibFileName() {
@@ -251,7 +255,7 @@ namespace ts.server {
             if (changesAffectModuleResolution(this.compilationSettings, opt)) {
                 this.sourceFileToResolvedModuleNames.clear();
                 this.resolvedTypeReferenceDirectives.clear();
-                // TODO: make this work for ModuleResolutionCache.
+                this.moduleResolutionCache = createModuleResolutionCache(this.currentDirectory, this.getCanonicalFileName);
             }
             this.compilationSettings = opt;
         }
