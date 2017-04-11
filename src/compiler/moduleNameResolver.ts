@@ -314,6 +314,7 @@ namespace ts {
     export function createModuleResolutionCache(currentDirectory: string, getCanonicalFileName: (s: string) => string): ModuleResolutionCache {
         type Ref<T> = { value: T } | undefined;
 
+        /** Keys must be baseFileNames */
         const directoryToModuleNameMap = createFileMap<Map<ResolvedModuleWithFailedLookupLocations>>();
         const moduleNameToDirectoryMap = createMap<PerModuleNameCache>();
         /** takes a file path to the resolved module in the nonRelativeMap cache. Needed to invalidate non-relative entries. */
@@ -331,6 +332,9 @@ namespace ts {
 
             let perFolderCache = directoryToModuleNameMap.get(directoryPath);
             if (perFolderCache) {
+                // Note, cache contains the actual text in the import block, eg: '../../modulename'
+                // TODO: rework this so only canonical paths are inserted/queried.
+                // TODO: make a test that handles complex relative paths
                 perFolderCache.delete(moduleName);
             }
 
@@ -453,9 +457,18 @@ namespace ts {
         if (traceEnabled) {
             trace(host, Diagnostics.Resolving_module_0_from_1, moduleName, containingFile);
         }
-        const containingDirectory = getDirectoryPath(containingFile);
-        const perFolderCache = cache && cache.getOrCreateCacheForDirectory(containingDirectory);
-        let result = perFolderCache && perFolderCache.get(moduleName);
+        let result: ResolvedModuleWithFailedLookupLocations;
+
+        if (isExternalModuleNameRelative(moduleName)) {
+            const containingDirectory = getDirectoryPath(containingFile);
+            const baseFileName = (getBaseFileName(moduleName));
+            const baseModuleName = removeFileExtension(baseFileName);
+            if (baseFileName !== baseModuleName) {
+                throw new Error("not implemented");
+            }
+            const perFolderCache = cache && cache.getOrCreateCacheForDirectory(containingDirectory);
+            result = perFolderCache && perFolderCache.get(baseModuleName);
+        }
 
         if (result) {
             if (traceEnabled) {
@@ -1005,7 +1018,7 @@ namespace ts {
             if (traceEnabled) {
                 trace(host, Diagnostics.Resolution_for_module_0_was_found_in_cache, moduleName);
             }
-            return { value: result.resolvedModule && { path: result.resolvedModule.resolvedFileName, extension: result.resolvedModule.extension } };
+            return toSearchResult(result.resolvedModule && { path: result.resolvedModule.resolvedFileName, extension: result.resolvedModule.extension });
         }
     }
 
