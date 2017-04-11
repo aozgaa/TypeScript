@@ -248,7 +248,7 @@ namespace ts.server {
         notifyFileRemoved(info: ScriptInfo) {
             this.sourceFileToResolvedModuleNames.remove(info.path);
             this.resolvedTypeReferenceDirectives.remove(info.path);
-            // TODO: make this work for ModuleResolutionCache
+            this.moduleResolutionCache.removeFile(info.path);
         }
 
         setCompilationSettings(opt: ts.CompilerOptions) {

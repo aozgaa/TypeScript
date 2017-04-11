@@ -294,6 +294,7 @@ namespace ts {
 
     export interface RelativeModuleResolutionCache {
         getOrCreateCacheForDirectory(directoryName: string): Map<ResolvedModuleWithFailedLookupLocations>;
+        removeFile(path: Path): void;
     }
 
     /**
@@ -302,6 +303,7 @@ namespace ts {
      */
     export interface NonRelativeModuleNameResolutionCache {
         getOrCreateCacheForModuleName(nonRelativeModuleName: string): PerModuleNameCache;
+        removeFile(path: Path): void;
     }
 
     export interface PerModuleNameCache {
@@ -310,10 +312,34 @@ namespace ts {
     }
 
     export function createModuleResolutionCache(currentDirectory: string, getCanonicalFileName: (s: string) => string): ModuleResolutionCache {
+        type Ref<T> = { value: T } | undefined;
+
         const directoryToModuleNameMap = createFileMap<Map<ResolvedModuleWithFailedLookupLocations>>();
         const moduleNameToDirectoryMap = createMap<PerModuleNameCache>();
+        /** takes a file path to the resolved module in the nonRelativeMap cache. Needed to invalidate non-relative entries. */
+        const filePathToNonRelativeModuleRef = createMap<Ref<ResolvedModuleWithFailedLookupLocations>>();
 
-        return { getOrCreateCacheForDirectory, getOrCreateCacheForModuleName };
+        return { getOrCreateCacheForDirectory, getOrCreateCacheForModuleName, removeFile };
+
+        function removeFile(path: Path): void {
+            const baseFileName = getBaseFileName(path);
+            const moduleName = removeFileExtension(baseFileName);
+
+            const nonCanonicalizedDirectoryPath = getDirectoryPath(path);
+            // TODO(aozgaa): should be noop, test to be sure.
+            const directoryPath = toPath(nonCanonicalizedDirectoryPath, currentDirectory, getCanonicalFileName);
+
+            let perFolderCache = directoryToModuleNameMap.get(directoryPath);
+            if (perFolderCache) {
+                perFolderCache.delete(moduleName);
+            }
+
+            // TODO: need a secondary map that relates actual file location to module (ie: reverse map);
+            const nonRelativeModuleRef = filePathToNonRelativeModuleRef.get(moduleName);
+            if (nonRelativeModuleRef) {
+                nonRelativeModuleRef.value = undefined;
+            }
+        }
 
         function getOrCreateCacheForDirectory(directoryName: string) {
             const path = toPath(directoryName, currentDirectory, getCanonicalFileName);
@@ -337,13 +363,15 @@ namespace ts {
             return perModuleNameCache;
         }
 
+
         function createPerModuleNameCache(): PerModuleNameCache {
-            const directoryPathMap = createFileMap<ResolvedModuleWithFailedLookupLocations>();
+            const directoryPathMap = createFileMap<Ref<ResolvedModuleWithFailedLookupLocations>>();
 
             return { get, set };
 
             function get(directory: string): ResolvedModuleWithFailedLookupLocations {
-                return directoryPathMap.get(toPath(directory, currentDirectory, getCanonicalFileName));
+                const ref = directoryPathMap.get(toPath(directory, currentDirectory, getCanonicalFileName));
+                return ref && ref.value;
             }
 
             /**
@@ -363,7 +391,12 @@ namespace ts {
                 if (directoryPathMap.contains(path)) {
                     return;
                 }
-                directoryPathMap.set(path, result);
+                const ref = { value: result };
+                // TODO: is this the right path/string to use as key here?
+                if (result.resolvedModule) {
+                    filePathToNonRelativeModuleRef.set(result.resolvedModule.resolvedFileName, ref);
+                }
+                directoryPathMap.set(path, ref);
 
                 const resolvedFileName = result.resolvedModule && result.resolvedModule.resolvedFileName;
                 // find common prefix between directory and resolved file name
@@ -377,7 +410,8 @@ namespace ts {
                     if (parent === current || directoryPathMap.contains(parent)) {
                         break;
                     }
-                    directoryPathMap.set(parent, result);
+                    // We need to re-use the same value so that a single update can invalidate all paths.
+                    directoryPathMap.set(parent, ref);
                     current = parent;
 
                     if (current == commonPrefix) {
