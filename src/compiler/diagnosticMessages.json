@@ -3177,6 +3177,14 @@
         "category": "Message",
         "code": 6181
     },
+    "Module '{0}' has invalid extension '{1}'. Failing to resolve module.": {
+        "category": "Message",
+        "code": 6182
+    },
+    "Module '{0}' has valid extension '{1}'. Simplifying module name to '{2}'.": {
+        "category": "Message",
+        "code": 6183
+    },
 
     "Variable '{0}' implicitly has an '{1}' type.": {
         "category": "Error",

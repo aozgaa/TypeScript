@@ -412,6 +412,26 @@ namespace ts {
         if (traceEnabled) {
             trace(host, Diagnostics.Resolving_module_0_from_1, moduleName, containingFile);
         }
+
+        // TODO: make sure we aren't ignoring non-extensions, eg `foo.core`.
+        const extension = tryGetExtensionFromPath(moduleName);
+        if (extension) {
+            if (extensionIsOk(Extensions.JavaScript, extension)) {
+                const extensionlessModuleName = removeFileExtension(moduleName);
+                if (extensionlessModuleName !== moduleName && traceEnabled) {
+                    trace(host, Diagnostics.Module_0_has_valid_extension_1_Simplifying_module_name_to_2, moduleName, extension, extensionlessModuleName);
+                }
+                moduleName = extensionlessModuleName;
+            }
+            else {
+                if (traceEnabled) {
+                    trace(host, Diagnostics.Module_0_has_invalid_extension_1_Failing_to_resolve_module, moduleName, extension);
+                }
+                return createResolvedModuleWithFailedLookupLocations(/*resolved*/ undefined, /*isExternalLibraryImport*/ false, /*failedLookupLocations*/[]);
+            }
+        }
+        
+
         const containingDirectory = getDirectoryPath(containingFile);
         const perFolderCache = cache && cache.getOrCreateCacheForDirectory(containingDirectory);
         let result = perFolderCache && perFolderCache.get(moduleName);
@@ -879,7 +899,7 @@ namespace ts {
 
         // Even if extensions is DtsOnly, we can still look up a .ts file as a result of package.json "types"
         const nextExtensions = extensions === Extensions.DtsOnly ? Extensions.TypeScript : extensions;
-        // Don't do package.json lookup recursively, because Node.js' package lookup doesn't.
+        // To match Node.js' package lookup procedure, do not lookup package.json recursively.
         return nodeLoadModuleByRelativeName(nextExtensions, file, failedLookupLocations, onlyRecordFailures, state, /*considerPackageJson*/ false);
     }
 
