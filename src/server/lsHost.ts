@@ -86,7 +86,7 @@ namespace ts.server {
                 let resolution = newResolutions.get(name);
                 if (!resolution) {
                     const existingResolution = currentResolutionsInFile && currentResolutionsInFile.get(name);
-                    if (moduleResolutionIsValid(existingResolution)) {
+                    if (cachedModuleResolutionIsValid(existingResolution)) {
                         // ok, it is safe to use existing name resolution results
                         resolution = existingResolution;
                     }
@@ -128,7 +128,7 @@ namespace ts.server {
                 return getResultFileName(oldResult) === getResultFileName(newResult);
             }
 
-            function moduleResolutionIsValid(resolution: T): boolean {
+            function cachedModuleResolutionIsValid(resolution: T): boolean {
                 if (!resolution) {
                     return false;
                 }
