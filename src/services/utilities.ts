@@ -742,18 +742,18 @@ namespace ts {
             const children = n.getChildren();
             for (let i = 0; i < children.length; i++) {
                 const child = children[i];
-                // condition 'position < child.end' checks if child node end after the position
-                // in the example below this condition will be false for 'aaaa' and 'bbbb' and true for 'ccc'
-                // aaaa___bbbb___$__ccc
-                // after we found child node with end after the position we check if start of the node is after the position.
-                // if yes - then position is in the trivia and we need to look into the previous child to find the token in question.
-                // if no - position is in the node itself so we should recurse in it.
-                // NOTE: JsxText is a weird kind of node that can contain only whitespaces (since they are not counted as trivia).
-                // if this is the case - then we should assume that token in question is located in previous child.
-                if (position < child.end && (nodeHasTokens(child) || child.kind === SyntaxKind.JsxText)) {
+                // Note that the span of a node's tokens is [node.getStart(...), node.end).
+                // Given that `position < child.end` and child has constiutent tokens*, we distinguish these cases:
+                // 1) `position` precedes `child`'s tokens or `child` has no tokens (ie: in a comment or whitespace preceding `child`):
+                // we need to find the last token in a previous child.
+                // 2) `position` is within the same span: we recurse on `child`.
+                // * JsxText is exceptional in that its tokens are (non-trivia) whitespace, which we do not want to return.
+                // TODO(arozga): shouldn't `findRightmost...` need to handle JsxText?
+                if (position < child.end) {
                     const start = child.getStart(sourceFile, includeJsDoc);
                     const lookInPreviousChild =
                         (start >= position) || // cursor in the leading trivia
+                        !nodeHasTokens(child) ||
                         (child.kind === SyntaxKind.JsxText && start === child.end); // whitespace only JsxText
 
                     if (lookInPreviousChild) {
@@ -780,7 +780,9 @@ namespace ts {
             }
         }
 
-        /// finds last node that is considered as candidate for search (isCandidate(node) === true) starting from 'exclusiveStartPosition'
+        /**
+         * Finds the rightmost child to the left of `children[exclusiveStartPosition]` which has constituent tokens.
+         */
         function findRightmostChildNodeWithTokens(children: Node[], exclusiveStartPosition: number): Node {
             for (let i = exclusiveStartPosition - 1; i >= 0; i--) {
                 if (nodeHasTokens(children[i])) {
