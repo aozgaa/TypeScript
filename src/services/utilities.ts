@@ -865,41 +865,11 @@ namespace ts {
      * @param predicate Additional predicate to test on the comment range.
      */
     export function isInComment(
-            sourceFile: SourceFile,
-            position: number,
-            tokenAtPosition = getTokenAtPosition(sourceFile, position, /*includeJsDocComment*/ false),
-            predicate?: (c: CommentRange) => boolean): boolean {
-        return position <= tokenAtPosition.getStart(sourceFile) &&
-            (isInCommentRange(getLeadingCommentRanges(sourceFile.text, tokenAtPosition.pos)) ||
-                isInCommentRange(getTrailingCommentRanges(sourceFile.text, tokenAtPosition.pos)));
-
-        function isInCommentRange(commentRanges: CommentRange[]): boolean {
-            return forEach(commentRanges, c => isPositionInCommentRange(c, position, sourceFile.text) && (!predicate || predicate(c)));
-        }
-    }
-
-    function isPositionInCommentRange({ pos, end, kind }: ts.CommentRange, position: number, text: string): boolean {
-        if (pos < position && position < end) {
-            return true;
-        }
-        else if (position === end) {
-            // The end marker of a single-line comment does not include the newline character.
-            // In the following case, we are inside a comment (^ denotes the cursor position):
-            //
-            //    // asdf   ^\n
-            //
-            // But for multi-line comments, we don't want to be inside the comment in the following case:
-            //
-            //    /* asdf */^
-            //
-            // Internally, we represent the end of the comment at the newline and closing '/', respectively.
-            return kind === SyntaxKind.SingleLineCommentTrivia ||
-                // true for unterminated multi-line comment
-                !(text.charCodeAt(end - 1) === CharacterCodes.slash && text.charCodeAt(end - 2) === CharacterCodes.asterisk);
-        }
-        else {
-            return false;
-        }
+        sourceFile: SourceFile,
+        position: number,
+        tokenAtPosition?: Node,
+        predicate?: (c: CommentRange) => boolean): boolean {
+        return !!formatting.getRangeOfEnclosingComment(sourceFile, position, /*onlyMultiLine*/ false, /*precedingToken*/ undefined, tokenAtPosition, predicate);
     }
 
     export function hasDocComment(sourceFile: SourceFile, position: number) {
