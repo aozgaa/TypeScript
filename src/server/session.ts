@@ -1936,6 +1936,7 @@ namespace ts.server {
                 this.setCurrentRequest(requestId);
                 return f();
             }
+            // TODO: figure out how to get project-telemetry stuff referenced here.
             finally {
                 this.resetCurrentRequest(requestId);
             }

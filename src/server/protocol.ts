@@ -2347,6 +2347,20 @@ namespace ts.server.protocol {
         success: boolean;
     }
 
+    export type LanguageServiceErrorTelemetryEventName = "LanguageServiceError";
+
+    export interface LanguageServiceErrorTelemetryEventBody extends TelemetryEventBody {
+        telemetryEventName: LanguageServiceErrorTelemetryEventName;
+        payload: LanguageServiceErrorTelemetryEventPayload;
+    }
+
+    export interface LanguageServiceErrorTelemetryEventPayload {
+        stack: string;
+        message: string;
+        typeScriptVersion: string;
+        currentRequestName: string;
+    }
+
     export interface NavBarResponse extends Response {
         body?: NavigationBarItem[];
     }
