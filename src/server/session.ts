@@ -1947,6 +1947,22 @@ namespace ts.server {
                 this.setCurrentRequest(requestId);
                 return f();
             }
+            catch (e) {
+                if (this.canUseEvents) {
+                    const eventName: protocol.TelemetryEventName = "telemetry";
+                    const telemetryEventName: protocol.LanguageServiceErrorTelemetryEventName = "LanguageServiceError";
+                    const payload = {
+                        stack: e.stack,
+                        message: e.message
+                    };
+
+                    this.event<protocol.LanguageServiceErrorTelemetryEventBody>({
+                        telemetryEventName,
+                        payload,
+                    }, eventName);
+                }
+                throw e;
+            }
             finally {
                 this.resetCurrentRequest(requestId);
             }
